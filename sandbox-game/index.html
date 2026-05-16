@@ -18,6 +18,36 @@ canvas{position:fixed;top:0;left:0;width:100%;height:100%}
 <button id="mb">🔊</button>
 <script>
 'use strict';
+
+// ── POLYFILLS (iOS Safari < 15.4 doesn't have roundRect) ──────────────────
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = r == null ? 0 : r;
+    let tl, tr, br, bl;
+    if (typeof r === 'number') {
+      tl = tr = br = bl = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
+    } else {
+      const a = r.map ? r : [r];
+      const clamp = (v) => Math.min(v, Math.abs(w)/2, Math.abs(h)/2);
+      if (a.length === 1) { tl=tr=br=bl=clamp(a[0]); }
+      else if (a.length === 2) { tl=br=clamp(a[0]); tr=bl=clamp(a[1]); }
+      else if (a.length === 3) { tl=clamp(a[0]); tr=bl=clamp(a[1]); br=clamp(a[2]); }
+      else { tl=clamp(a[0]); tr=clamp(a[1]); br=clamp(a[2]); bl=clamp(a[3]); }
+    }
+    this.beginPath();
+    this.moveTo(x + tl, y);
+    this.lineTo(x + w - tr, y);
+    this.arcTo(x+w, y,     x+w, y+tr,   tr);
+    this.lineTo(x + w, y + h - br);
+    this.arcTo(x+w, y+h,   x+w-br, y+h, br);
+    this.lineTo(x + bl, y + h);
+    this.arcTo(x, y+h,     x, y+h-bl,   bl);
+    this.lineTo(x, y + tl);
+    this.arcTo(x, y,       x+tl, y,     tl);
+    this.closePath();
+  };
+}
+
 // ── SETUP ──────────────────────────────────────────────────────────────────
 const C   = document.getElementById('c');
 const ctx = C.getContext('2d');
@@ -536,7 +566,25 @@ function loop(){
   drawParts();
 }
 
-initScene(); loop();
+// Global error catch — draw red error box on canvas if JS crashes
+window.onerror = function(msg, src, line) {
+  try {
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle='#c0392b'; ctx.fillRect(0,0,C.width,C.height);
+    ctx.fillStyle='#fff'; ctx.font='28px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('שגיאה: '+msg.substring(0,40), C.width/2, C.height/2);
+    ctx.fillText('שורה '+line, C.width/2, C.height/2+40);
+  } catch(e){}
+  return true;
+};
+
+try {
+  initScene();
+  loop();
+} catch(e) {
+  console.error(e);
+  window.onerror(e.message || String(e), '', 0);
+}
 </script>
 </body>
 </html>
