@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>משחק הטרקטור של גפן</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>🚜 משחק הטרקטור של גפן 🚜</h1>
+      <div id="hud">
+        <span>ניקוד: <strong id="score">0</strong></span>
+        <span>רמה: <strong id="level">1</strong></span>
+        <span>חיים: <strong id="lives">❤️❤️❤️</strong></span>
+        <span>זמן: <strong id="timer">60</strong></span>
+      </div>
+    </header>
+
+    <div id="game-container">
+      <canvas id="canvas" width="800" height="500"></canvas>
+      <div id="overlay" class="hidden">
+        <div id="overlay-content">
+          <h2 id="overlay-title"></h2>
+          <p id="overlay-msg"></p>
+          <button id="btn-start">התחל משחק!</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>חצים / WASD להזזה &nbsp;|&nbsp; אסוף תבואה 🌾 לניקוד &nbsp;|&nbsp; הימנע מאבנים 🪨</p>
+    </footer>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
