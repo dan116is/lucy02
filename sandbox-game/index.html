@@ -19,35 +19,6 @@ canvas{position:fixed;top:0;left:0;width:100%;height:100%}
 <script>
 'use strict';
 
-// ── POLYFILLS (iOS Safari < 15.4 doesn't have roundRect) ──────────────────
-if (!CanvasRenderingContext2D.prototype.roundRect) {
-  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-    r = r == null ? 0 : r;
-    let tl, tr, br, bl;
-    if (typeof r === 'number') {
-      tl = tr = br = bl = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
-    } else {
-      const a = r.map ? r : [r];
-      const clamp = (v) => Math.min(v, Math.abs(w)/2, Math.abs(h)/2);
-      if (a.length === 1) { tl=tr=br=bl=clamp(a[0]); }
-      else if (a.length === 2) { tl=br=clamp(a[0]); tr=bl=clamp(a[1]); }
-      else if (a.length === 3) { tl=clamp(a[0]); tr=bl=clamp(a[1]); br=clamp(a[2]); }
-      else { tl=clamp(a[0]); tr=clamp(a[1]); br=clamp(a[2]); bl=clamp(a[3]); }
-    }
-    this.beginPath();
-    this.moveTo(x + tl, y);
-    this.lineTo(x + w - tr, y);
-    this.arcTo(x+w, y,     x+w, y+tr,   tr);
-    this.lineTo(x + w, y + h - br);
-    this.arcTo(x+w, y+h,   x+w-br, y+h, br);
-    this.lineTo(x + bl, y + h);
-    this.arcTo(x, y+h,     x, y+h-bl,   bl);
-    this.lineTo(x, y + tl);
-    this.arcTo(x, y,       x+tl, y,     tl);
-    this.closePath();
-  };
-}
-
 // ── SETUP ──────────────────────────────────────────────────────────────────
 const C   = document.getElementById('c');
 const ctx = C.getContext('2d');
@@ -67,6 +38,34 @@ function resize(){
 }
 resize();
 
+// Draw a loading indicator immediately so we know the canvas works
+ctx.fillStyle = '#27ae60';
+ctx.fillRect(0, 0, W, H);
+ctx.fillStyle = '#fff';
+ctx.font = 'bold 32px sans-serif';
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+ctx.fillText('\u{05D8}\u{05D5}\u{05E2}\u{05DF}...', W/2, H/2);
+
+// ── ROUNDED-RECT HELPER (replaces ctx.roundRect — works on all iOS versions) ──
+// Appends a rounded-rect path to the current sub-path.
+// Call ctx.beginPath() before and ctx.fill()/ctx.stroke() after.
+// r may be a number OR an array (only r[0] is used for simplicity).
+function rr(x,y,w,h,r){
+  if(Array.isArray(r)) r=r[0];
+  r=Math.min(r||0,Math.abs(w)/2,Math.abs(h)/2);
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,   x+w,y+r,   r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.arcTo(x+w,y+h, x+w-r,y+h, r);
+  ctx.lineTo(x+r,y+h);
+  ctx.arcTo(x,y+h,   x,y+h-r,   r);
+  ctx.lineTo(x,y+r);
+  ctx.arcTo(x,y,     x+r,y,     r);
+  ctx.closePath();
+}
+
 // ── AUDIO ──────────────────────────────────────────────────────────────────
 let AC=null, muted=false;
 const mbtn=document.getElementById('mb');
@@ -82,35 +81,29 @@ function sndZoom(){ if(muted) return; try{ const a=ac(),o=a.createOscillator(),g
 // ── SAND SIMULATION ────────────────────────────────────────────────────────
 // grid: Uint8Array, 0=empty, 1-7=sand variant
 let grid;
-// Off-screen canvas for fast sand rendering
-let sandOC, sandOCtx, sandID;
 
-// Pre-computed RGBA for each sand variant
-const SAND_RGBA = [
+// CSS color strings for each sand variant (index 0 unused)
+const SAND_COLORS = [
   null,
-  [212,168, 67,255],
-  [200,155, 52,255],
-  [224,182, 78,255],
-  [196,150, 44,255],
-  [234,196, 90,255],
-  [180,140, 40,255],
-  [208,165, 60,255],
+  '#d4a843',
+  '#c89734',
+  '#e0b64e',
+  '#c4962c',
+  '#eac45a',
+  '#b48c28',
+  '#d0a53c',
 ];
 
 function initSand(){
   grid = new Uint8Array(gW * gH);
-  sandOC = document.createElement('canvas');
-  sandOC.width  = gW * CELL;
-  sandOC.height = gH * CELL;
-  sandOCtx = sandOC.getContext('2d');
-  sandID = sandOCtx.createImageData(sandOC.width, sandOC.height);
 }
 
 function si(col,row){ return row*gW+col; }
 
 function worldToCell(wx,wy){ return { c:Math.floor(wx/CELL), r:Math.floor((wy-GY)/CELL) }; }
 
-function addSand(wx,wy,radius=2){
+function addSand(wx,wy,radius){
+  radius = radius == null ? 2 : radius;
   const {c:cc,r:cr}=worldToCell(wx,wy);
   for(let dr=-radius;dr<=radius;dr++){
     for(let dc=-radius;dc<=radius;dc++){
@@ -127,7 +120,7 @@ function clearSandRect(wx,wy,hw,hh){
   const c0=Math.max(0,Math.floor((wx-hw)/CELL));
   const c1=Math.min(gW-1,Math.ceil((wx+hw)/CELL));
   const r0=Math.max(0,Math.floor((wy-hh-GY)/CELL));
-  const r1=Math.min(gH-1,Math.ceil((wy+GY)/CELL)); // bottom of vehicle clears
+  const r1=Math.min(gH-1,Math.ceil((wy+GY)/CELL));
   for(let r=r0;r<=r1;r++) for(let c=c0;c<=c1;c++) grid[si(c,r)]=0;
 }
 
@@ -150,12 +143,11 @@ function updateSand(){
       // Try diagonal (natural repose angle)
       const goL=(Math.random()<.5);
       const d1=goL?-1:1, d2=goL?1:-1;
-      let moved=false;
       for(const d of [d1,d2]){
         const nc=col+d;
         if(nc<0||nc>=gW) continue;
         const ni=si(nc,row+1);
-        if(!grid[ni]){ grid[ni]=v; grid[i]=0; moved=true; break; }
+        if(!grid[ni]){ grid[ni]=v; grid[i]=0; break; }
       }
     }
   }
@@ -163,9 +155,7 @@ function updateSand(){
 
 // bulldozer: push sand horizontally
 function pushSandRight(cx,cy,dist){
-  // cx,cy in world px — blade position, dist = push amount
   const {c:bc,r:br}=worldToCell(cx,cy);
-  // Scan rows near ground level
   for(let r=Math.max(0,br-2);r<gH;r++){
     for(let c=gW-2;c>=bc;c--){
       if(grid[si(c,r)]&&!grid[si(c+1,r)]){
@@ -176,54 +166,45 @@ function pushSandRight(cx,cy,dist){
 }
 
 // excavator: remove sand at scoop point
-function scoopSand(wx,wy,r=2){
+function scoopSand(wx,wy,sr){
+  sr = sr == null ? 2 : sr;
   const {c:cc,r:cr}=worldToCell(wx,wy);
-  for(let dr=-r;dr<=r;dr++) for(let dc=-r;dc<=r;dc++){
-    const c=cc+dc, rr=cr+dr;
-    if(c>=0&&c<gW&&rr>=0&&rr<gH) grid[si(c,rr)]=0;
+  for(let dr=-sr;dr<=sr;dr++) for(let dc=-sr;dc<=sr;dc++){
+    const c=cc+dc, rv=cr+dr;
+    if(c>=0&&c<gW&&rv>=0&&rv<gH) grid[si(c,rv)]=0;
   }
 }
 
 // dump truck: pour sand column at position
-function pourSandColumn(wx,wy,amount=8){
+function pourSandColumn(wx,wy,amount){
+  amount = amount == null ? 8 : amount;
   const {c:cc}=worldToCell(wx,wy);
   for(let a=0;a<amount;a++){
     const c=Math.max(0,Math.min(gW-1,cc+Math.round((Math.random()-.5)*6)));
-    // drop from top of ground
     for(let r=0;r<gH;r++){
       if(!grid[si(c,r)]){ grid[si(c,r)]=(Math.floor(Math.random()*7)+1); break; }
     }
   }
 }
 
+// Draw sand directly with fillRect — avoids all ImageData/offscreen canvas issues
 function drawSand(){
-  const d=sandID.data;
-  const sw=sandOC.width;
-  // Clear
-  d.fill(0);
+  let prev=0;
   for(let row=0;row<gH;row++){
     for(let col=0;col<gW;col++){
       const v=grid[si(col,row)];
       if(!v) continue;
-      const rgb=SAND_RGBA[v];
-      const x0=col*CELL, y0=row*CELL;
-      for(let dy=0;dy<CELL;dy++){
-        let pi=((y0+dy)*sw+x0)*4;
-        for(let dx=0;dx<CELL;dx++,pi+=4){
-          d[pi]=rgb[0]; d[pi+1]=rgb[1]; d[pi+2]=rgb[2]; d[pi+3]=255;
-        }
-      }
+      if(v!==prev){ ctx.fillStyle=SAND_COLORS[v]; prev=v; }
+      ctx.fillRect(col*CELL, GY+row*CELL, CELL, CELL);
     }
   }
-  sandOCtx.putImageData(sandID,0,0);
-  ctx.drawImage(sandOC,0,GY);
 }
 
 // ── PARTICLES ──────────────────────────────────────────────────────────────
 const parts=[];
-function pDirt(x,y,n=8){ for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*7,vy:-(Math.random()*7+2),r:Math.random()*6+3,a:1,c:`hsl(${25+Math.random()*18},55%,${28+Math.random()*18}%)`}); }
-function pSmoke(x,y,n=4){ for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*2,vy:-(Math.random()*2.5+.5),r:Math.random()*8+5,a:.62,smoke:true,c:'#aaa'}); }
-function pStar(x,y,n=12){ for(let i=0;i<n;i++){ const a=(Math.PI*2*i)/n,spd=Math.random()*5+2; parts.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:Math.random()*5+2,a:1,c:`hsl(${Math.random()*60+15},100%,58%)`}); } }
+function pDirt(x,y,n){ n=n==null?8:n; for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*7,vy:-(Math.random()*7+2),r:Math.random()*6+3,a:1,c:`hsl(${25+Math.random()*18},55%,${28+Math.random()*18}%)`}); }
+function pSmoke(x,y,n){ n=n==null?4:n; for(let i=0;i<n;i++) parts.push({x,y,vx:(Math.random()-.5)*2,vy:-(Math.random()*2.5+.5),r:Math.random()*8+5,a:.62,smoke:true,c:'#aaa'}); }
+function pStar(x,y,n){ n=n==null?12:n; for(let i=0;i<n;i++){ const a=(Math.PI*2*i)/n,spd=Math.random()*5+2; parts.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:Math.random()*5+2,a:1,c:`hsl(${Math.random()*60+15},100%,58%)`}); } }
 function updParts(){ for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.x+=p.vx;p.y+=p.vy;p.vy+=.28; p.a-=p.smoke?.012:.024; if(p.smoke) p.r+=.35; if(p.a<=0) parts.splice(i,1); } }
 function drawParts(){ parts.forEach(p=>{ ctx.globalAlpha=Math.max(0,p.a);ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill(); }); ctx.globalAlpha=1; }
 
@@ -237,11 +218,11 @@ function whl(cx,cy,ro,ri){
   ctx.fillStyle='#ddd';ctx.beginPath();ctx.arc(cx,cy,ri*.3,0,Math.PI*2);ctx.fill();
 }
 function trk(x,y,w,h){
-  ctx.fillStyle='#1e1e1e';ctx.beginPath();ctx.roundRect(x,y,w,h,h/2);ctx.fill();
+  ctx.fillStyle='#1e1e1e';ctx.beginPath();rr(x,y,w,h,h/2);ctx.fill();
   ctx.strokeStyle='#3a3a3a';ctx.lineWidth=1.5;
   const n=Math.floor(w/13);
   for(let i=1;i<n;i++){const tx=x+(i/n)*w;ctx.beginPath();ctx.moveTo(tx,y+2);ctx.lineTo(tx,y+h-2);ctx.stroke();}
-  ctx.fillStyle='rgba(255,255,255,.07)';ctx.beginPath();ctx.roundRect(x+3,y+2,w-6,h*.35,(h*.35)/2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.07)';ctx.beginPath();rr(x+3,y+2,w-6,h*.35,(h*.35)/2);ctx.fill();
 }
 
 // ── VEHICLE ────────────────────────────────────────────────────────────────
@@ -254,7 +235,6 @@ class Vehicle{
     if(!this.dragging)return;
     this.x=Math.max(55,Math.min(W-55,px+this.ox));
     this.y=Math.max(GY*.3,Math.min(H-20,py+this.oy));
-    // clear sand under dragged vehicle
     if(this.y>=GY-10) clearSandRect(this.x,this.y,this.hw*.45,5);
   }
   drop(){this.dragging=false;this.sc=1;this.fy=0;this.y=GY;}
@@ -309,7 +289,6 @@ class Vehicle{
     const s=this.sc*VS;
     ctx.translate(this.x,this.y+this.fy);
     ctx.scale(s,s);
-    // Shadow on ground when lifted
     if(this.dragging){
       ctx.save();ctx.globalAlpha=.15;ctx.fillStyle='#000';
       const sy=(GY-(this.y+this.fy))/s;
@@ -328,17 +307,17 @@ class Vehicle{
 
   _tractor(){
     whl(-30,-30,29,12);
-    ctx.fillStyle='#27ae60';ctx.beginPath();ctx.roundRect(-50,-55,80,32,7);ctx.fill();ctx.strokeStyle='#1a7a42';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#27ae60';ctx.beginPath();rr(-50,-55,80,32,7);ctx.fill();ctx.strokeStyle='#1a7a42';ctx.lineWidth=2.5;ctx.stroke();
     ctx.fillStyle='#1e8449';ctx.beginPath();ctx.arc(-30,-30,34,Math.PI*1.08,Math.PI*1.92);ctx.lineTo(-50,-22);ctx.closePath();ctx.fill();
     whl(40,-18,15,6);
-    ctx.fillStyle='#2ecc71';ctx.beginPath();ctx.roundRect(-20,-84,42,33,8);ctx.fill();ctx.strokeStyle='#1a7a42';ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle='#27ae60';ctx.beginPath();ctx.roundRect(-18,-88,38,11,[6,6,0,0]);ctx.fill();
-    ctx.fillStyle='#b8eaff';ctx.beginPath();ctx.roundRect(-14,-79,32,21,4);ctx.fill();ctx.strokeStyle='#1a7a42';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.roundRect(-12,-77,11,7,2);ctx.fill();
-    ctx.fillStyle='#555';ctx.beginPath();ctx.roundRect(15,-98,8,21,2);ctx.fill();ctx.fillStyle='#333';ctx.beginPath();ctx.arc(19,-99,5.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#2ecc71';ctx.beginPath();rr(-20,-84,42,33,8);ctx.fill();ctx.strokeStyle='#1a7a42';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#27ae60';ctx.beginPath();rr(-18,-88,38,11,6);ctx.fill();
+    ctx.fillStyle='#b8eaff';ctx.beginPath();rr(-14,-79,32,21,4);ctx.fill();ctx.strokeStyle='#1a7a42';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.55)';ctx.beginPath();rr(-12,-77,11,7,2);ctx.fill();
+    ctx.fillStyle='#555';ctx.beginPath();rr(15,-98,8,21,2);ctx.fill();ctx.fillStyle='#333';ctx.beginPath();ctx.arc(19,-99,5.5,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#ffe44d';ctx.beginPath();ctx.arc(31,-40,7.5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#cc9900';ctx.lineWidth=2;ctx.stroke();
     ctx.fillStyle='rgba(255,228,77,.18)';ctx.beginPath();ctx.arc(31,-40,15,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#1a7a42';ctx.beginPath();ctx.roundRect(26,-55,12,28,3);ctx.fill();
+    ctx.fillStyle='#1a7a42';ctx.beginPath();rr(26,-55,12,28,3);ctx.fill();
     ctx.strokeStyle='#145a32';ctx.lineWidth=1.5;
     [0,7,14,21].forEach(dy=>{ctx.beginPath();ctx.moveTo(28,-53+dy);ctx.lineTo(36,-53+dy);ctx.stroke();});
     ctx.strokeStyle='#145a32';ctx.lineWidth=3;ctx.beginPath();ctx.arc(-4,-63,7.5,0,Math.PI*2);ctx.stroke();
@@ -350,16 +329,16 @@ class Vehicle{
     [-45,-18,12,40].forEach(wx=>{ctx.fillStyle='#3a3a3a';ctx.beginPath();ctx.arc(wx,-11,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#555';ctx.beginPath();ctx.arc(wx,-11,4,0,Math.PI*2);ctx.fill();});
     whl(-60,-11,13,6);whl(60,-11,13,6);
     ctx.save();ctx.rotate(A*.08);
-    ctx.fillStyle='#e67e22';ctx.beginPath();ctx.roundRect(-48,-76,78,58,8);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle='#d35400';ctx.beginPath();ctx.roundRect(-43,-81,68,12,[6,6,0,0]);ctx.fill();
-    ctx.fillStyle='#aee6ff';ctx.beginPath();ctx.roundRect(-40,-76,42,30,4);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();ctx.roundRect(-38,-74,13,8,2);ctx.fill();
-    ctx.fillStyle='#555';ctx.beginPath();ctx.roundRect(22,-87,7,18,2);ctx.fill();ctx.fillStyle='#333';ctx.beginPath();ctx.arc(25.5,-88,4.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#e67e22';ctx.beginPath();rr(-48,-76,78,58,8);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#d35400';ctx.beginPath();rr(-43,-81,68,12,6);ctx.fill();
+    ctx.fillStyle='#aee6ff';ctx.beginPath();rr(-40,-76,42,30,4);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();rr(-38,-74,13,8,2);ctx.fill();
+    ctx.fillStyle='#555';ctx.beginPath();rr(22,-87,7,18,2);ctx.fill();ctx.fillStyle='#333';ctx.beginPath();ctx.arc(25.5,-88,4.5,0,Math.PI*2);ctx.fill();
     ctx.restore();
     ctx.save();ctx.translate(22,-62);ctx.rotate(-.28+A*.85);
-    ctx.fillStyle='#e67e22';ctx.beginPath();ctx.roundRect(-8,-72,16,74,5);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#e67e22';ctx.beginPath();rr(-8,-72,16,74,5);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=2;ctx.stroke();
     ctx.save();ctx.translate(0,-70);ctx.rotate(.48-A*.58);
-    ctx.fillStyle='#d35400';ctx.beginPath();ctx.roundRect(-6,-56,12,58,4);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#d35400';ctx.beginPath();rr(-6,-56,12,58,4);ctx.fill();ctx.strokeStyle='#ca6f1e';ctx.lineWidth=1.5;ctx.stroke();
     ctx.save();ctx.translate(0,-54);ctx.rotate(.32+A*.9);
     ctx.fillStyle='#c0392b';ctx.beginPath();ctx.moveTo(-17,-6);ctx.bezierCurveTo(-19,12,19,12,17,-6);ctx.lineTo(11,-19);ctx.lineTo(-11,-19);ctx.closePath();ctx.fill();ctx.strokeStyle='#922b21';ctx.lineWidth=2;ctx.stroke();
     ctx.fillStyle='#999';[-8,0,8].forEach(tx=>{ctx.beginPath();ctx.moveTo(tx-3,11);ctx.lineTo(tx,18);ctx.lineTo(tx+3,11);ctx.closePath();ctx.fill();});
@@ -369,18 +348,18 @@ class Vehicle{
   _truck(){
     const B=this.d.bedA||0;
     whl(-40,-20,14,6);whl(26,-22,16,7);whl(44,-22,16,7);
-    ctx.fillStyle='#c0392b';ctx.beginPath();ctx.roundRect(-62,-70,47,53,8);ctx.fill();ctx.strokeStyle='#922b21';ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle='#e74c3c';ctx.beginPath();ctx.roundRect(-60,-74,44,11,[6,6,0,0]);ctx.fill();
-    ctx.fillStyle='#aee8ff';ctx.beginPath();ctx.roundRect(-57,-66,37,26,4);ctx.fill();ctx.strokeStyle='#922b21';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();ctx.roundRect(-55,-64,12,8,2);ctx.fill();
+    ctx.fillStyle='#c0392b';ctx.beginPath();rr(-62,-70,47,53,8);ctx.fill();ctx.strokeStyle='#922b21';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#e74c3c';ctx.beginPath();rr(-60,-74,44,11,6);ctx.fill();
+    ctx.fillStyle='#aee8ff';ctx.beginPath();rr(-57,-66,37,26,4);ctx.fill();ctx.strokeStyle='#922b21';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();rr(-55,-64,12,8,2);ctx.fill();
     ctx.fillStyle='#ffe44d';ctx.beginPath();ctx.ellipse(-57,-35,6,5,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(-57,-50,6,5,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#555';ctx.beginPath();ctx.roundRect(-28,-80,6,14,2);ctx.fill();
-    ctx.fillStyle='#555';ctx.beginPath();ctx.roundRect(-64,-6,122,6,2);ctx.fill();
+    ctx.fillStyle='#555';ctx.beginPath();rr(-28,-80,6,14,2);ctx.fill();
+    ctx.fillStyle='#555';ctx.beginPath();rr(-64,-6,122,6,2);ctx.fill();
     ctx.save();ctx.translate(57,-36);ctx.rotate(-B);
-    ctx.fillStyle='#7f8c8d';ctx.beginPath();ctx.roundRect(-118,-12,118,26,3);ctx.fill();ctx.strokeStyle='#566573';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle='#7f8c8d';ctx.beginPath();rr(-118,-12,118,26,3);ctx.fill();ctx.strokeStyle='#566573';ctx.lineWidth=1.5;ctx.stroke();
     ctx.strokeStyle='#566573';ctx.lineWidth=1.5;[-95,-70,-45,-20].forEach(rx=>{ctx.beginPath();ctx.moveTo(rx,-10);ctx.lineTo(rx,10);ctx.stroke();});
-    ctx.fillStyle='#95a5a6';ctx.beginPath();ctx.roundRect(-118,-18,9,22,[4,0,0,4]);ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.14)';ctx.beginPath();ctx.roundRect(-118,-12,118,6,2);ctx.fill();
+    ctx.fillStyle='#95a5a6';ctx.beginPath();rr(-118,-18,9,22,4);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.14)';ctx.beginPath();rr(-118,-12,118,6,2);ctx.fill();
     ctx.fillStyle=B>.08?'#ff4444':'#990000';ctx.beginPath();ctx.ellipse(-115,5,5,4,0,0,Math.PI*2);ctx.fill();
     ctx.restore();
   }
@@ -390,13 +369,13 @@ class Vehicle{
     trk(-68+dx*.3,-22,136,22);
     [-45,-18,12,40].forEach(wx=>{ctx.fillStyle='#3a3a3a';ctx.beginPath();ctx.arc(wx+dx*.3,-11,8,0,Math.PI*2);ctx.fill();ctx.fillStyle='#555';ctx.beginPath();ctx.arc(wx+dx*.3,-11,4,0,Math.PI*2);ctx.fill();});
     whl(-60+dx*.3,-11,13,6);whl(60+dx*.3,-11,13,6);
-    ctx.fillStyle='#f1c40f';ctx.beginPath();ctx.roundRect(-52+dx*.2,-74,92,56,8);ctx.fill();ctx.strokeStyle='#d4ac0d';ctx.lineWidth=2.5;ctx.stroke();
-    ctx.fillStyle='#d4ac0d';ctx.beginPath();ctx.roundRect(-10+dx*.2,-68,46,24,5);ctx.fill();ctx.strokeStyle='#b7950b';ctx.lineWidth=1.5;
+    ctx.fillStyle='#f1c40f';ctx.beginPath();rr(-52+dx*.2,-74,92,56,8);ctx.fill();ctx.strokeStyle='#d4ac0d';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='#d4ac0d';ctx.beginPath();rr(-10+dx*.2,-68,46,24,5);ctx.fill();ctx.strokeStyle='#b7950b';ctx.lineWidth=1.5;
     [5,13,21].forEach(vy=>{ctx.beginPath();ctx.moveTo(-5+dx*.2,-66+vy);ctx.lineTo(32+dx*.2,-66+vy);ctx.stroke();});
-    ctx.fillStyle='#f39c12';ctx.beginPath();ctx.roundRect(-50+dx*.2,-74,46,42,6);ctx.fill();ctx.strokeStyle='#d4ac0d';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='#b8eaff';ctx.beginPath();ctx.roundRect(-46+dx*.2,-70,38,27,4);ctx.fill();ctx.strokeStyle='#d4ac0d';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();ctx.roundRect(-44+dx*.2,-68,12,8,2);ctx.fill();
-    ctx.fillStyle='#555';ctx.beginPath();ctx.roundRect(-20+dx*.2,-84,7,17,2);ctx.fill();ctx.fillStyle='#333';ctx.beginPath();ctx.arc(-16.5+dx*.2,-85,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#f39c12';ctx.beginPath();rr(-50+dx*.2,-74,46,42,6);ctx.fill();ctx.strokeStyle='#d4ac0d';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#b8eaff';ctx.beginPath();rr(-46+dx*.2,-70,38,27,4);ctx.fill();ctx.strokeStyle='#d4ac0d';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();rr(-44+dx*.2,-68,12,8,2);ctx.fill();
+    ctx.fillStyle='#555';ctx.beginPath();rr(-20+dx*.2,-84,7,17,2);ctx.fill();ctx.fillStyle='#333';ctx.beginPath();ctx.arc(-16.5+dx*.2,-85,5,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#bdc3c7';ctx.beginPath();ctx.moveTo(38+dx,-48);ctx.bezierCurveTo(56+dx,-48,62+dx,-36,62+dx,-10);ctx.bezierCurveTo(62+dx,6,56+dx,10,38+dx,10);ctx.lineTo(38+dx,3);ctx.bezierCurveTo(52+dx,3,54+dx,-4,54+dx,-10);ctx.bezierCurveTo(54+dx,-32,50+dx,-40,38+dx,-40);ctx.closePath();ctx.fill();ctx.strokeStyle='#95a5a6';ctx.lineWidth=2.5;ctx.stroke();
     ctx.strokeStyle='#95a5a6';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(26+dx*.5,-44);ctx.lineTo(46+dx,-40);ctx.stroke();ctx.beginPath();ctx.moveTo(26+dx*.5,-8);ctx.lineTo(46+dx,-6);ctx.stroke();
     ctx.fillStyle='rgba(255,255,255,.2)';ctx.beginPath();ctx.moveTo(41+dx,-44);ctx.bezierCurveTo(54+dx,-42,56+dx,-34,56+dx,-10);ctx.bezierCurveTo(56+dx,2,53+dx,5,43+dx,6);ctx.lineTo(43+dx,2);ctx.bezierCurveTo(49+dx,-1,50+dx,-8,50+dx,-10);ctx.bezierCurveTo(50+dx,-28,48+dx,-37,41+dx,-40);ctx.closePath();ctx.fill();
@@ -405,7 +384,7 @@ class Vehicle{
 
 // ── CLOUDS ─────────────────────────────────────────────────────────────────
 class Cloud{
-  constructor(x,y,w,spd,al=.94){this.x=x;this.y=y;this.w=w;this.spd=spd;this.al=al;this.h=w*.38;}
+  constructor(x,y,w,spd,al){al=al==null?.94:al;this.x=x;this.y=y;this.w=w;this.spd=spd;this.al=al;this.h=w*.38;}
   update(){this.x+=this.spd;if(this.x>W+this.w+60)this.x=-this.w-60;}
   draw(){
     const{x,y,w,h}=this;
@@ -420,7 +399,7 @@ class Cloud{
 // ── AIRPLANE ───────────────────────────────────────────────────────────────
 class Airplane{
   constructor(){this.trail=[];this.frame=0;this.tapTimer=0;this.tapped=false;this.wobble=0;this._reset(true);}
-  _reset(init=false){this.x=init?Math.random()*W:-240;this.y=GY*(0.08+Math.random()*.25);this.spd=1.6+Math.random()*1.2;if(!init)this.trail=[];}
+  _reset(init){init=!!init;this.x=init?Math.random()*W:-240;this.y=GY*(0.08+Math.random()*.25);this.spd=1.6+Math.random()*1.2;if(!init)this.trail=[];}
   hit(px,py){return Math.abs(px-this.x)<85&&Math.abs(py-this.y-this.wobble)<32;}
   tap(){if(this.tapped)return;this.tapped=true;this.tapTimer=0;sndZoom();pStar(this.x,this.y+this.wobble,12);}
   update(){
@@ -466,7 +445,6 @@ function drawWorld(){
   const sg=ctx.createRadialGradient(sx-5,sy-5,4,sx,sy,sr);sg.addColorStop(0,'#fffaaa');sg.addColorStop(.5,'#ffe066');sg.addColorStop(1,'#ff9500');ctx.fillStyle=sg;ctx.beginPath();ctx.arc(sx,sy,sr,0,Math.PI*2);ctx.fill();
   ctx.strokeStyle='rgba(255,220,80,.55)';
   for(let i=0;i<12;i++){const a=(Math.PI*2/12)*i+sunPulse*.25,r1=sr+8,r2=sr+22+Math.sin(sunPulse+i)*4;ctx.lineWidth=2+Math.sin(sunPulse*2+i)*.5;ctx.beginPath();ctx.moveTo(sx+Math.cos(a)*r1,sy+Math.sin(a)*r1);ctx.lineTo(sx+Math.cos(a)*r2,sy+Math.sin(a)*r2);ctx.stroke();}
-  // Ground
   const grd=ctx.createLinearGradient(0,GY,0,H);grd.addColorStop(0,'#c4a265');grd.addColorStop(.06,'#b8955c');grd.addColorStop(1,'#8b6914');ctx.fillStyle=grd;ctx.fillRect(0,GY,W,H-GY);
   const grass=ctx.createLinearGradient(0,GY-9,0,GY+13);grass.addColorStop(0,'#4caf50');grass.addColorStop(1,'#388e3c');ctx.fillStyle=grass;ctx.fillRect(0,GY-9,W,18);
   ctx.strokeStyle='rgba(0,0,0,.04)';ctx.lineWidth=1;
@@ -494,7 +472,6 @@ function initScene(){
   ];
   airplane=new Airplane();
   initSand();
-  // Pre-fill some sand so it looks like a sandbox right away
   for(let i=0;i<120;i++) addSand(Math.random()*W, GY+(H-GY)*(Math.random()*.5+.5), 1);
 }
 
@@ -511,7 +488,6 @@ function pDown(px,py){
       return;
     }
   }
-  // Sand mode — ground touch
   sandActive=true; lastSandX=px; lastSandY=py;
   addSand(px,py,3);
 }
@@ -523,7 +499,6 @@ function pMove(px,py){
     return;
   }
   if(sandActive){
-    // Interpolate between last and current touch to fill gaps
     const steps=Math.ceil(Math.hypot(px-lastSandX,py-lastSandY)/CELL)+1;
     for(let s=0;s<=steps;s++){
       const lx=lastSandX+(px-lastSandX)*s/steps;
@@ -552,29 +527,37 @@ window.addEventListener('resize',()=>{resize();initSand();vehicles.forEach(v=>{i
 let frameN=0;
 function loop(){
   requestAnimationFrame(loop);
-  frameN++;
-  clouds.forEach(c=>c.update());
-  airplane.update();
-  vehicles.forEach(v=>v.update());
-  updParts();
-  if(frameN%2===0) updateSand(); // physics every 2 frames for perf
-  drawWorld();
-  drawSand();
-  clouds.forEach(c=>c.draw());
-  airplane.draw();
-  vehicles.forEach(v=>v.draw());
-  drawParts();
+  try {
+    frameN++;
+    clouds.forEach(c=>c.update());
+    airplane.update();
+    vehicles.forEach(v=>v.update());
+    updParts();
+    if(frameN%2===0) updateSand();
+    drawWorld();
+    drawSand();
+    clouds.forEach(c=>c.draw());
+    airplane.draw();
+    vehicles.forEach(v=>v.draw());
+    drawParts();
+  } catch(e) {
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle='#c0392b'; ctx.fillRect(0,0,C.width,C.height);
+    ctx.fillStyle='#fff'; ctx.font='bold '+(C.width/12)+'px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(String(e).substring(0,50), C.width/2, C.height/2);
+  }
 }
 
-// Global error catch — draw red error box on canvas if JS crashes
+// Global error catch — iOS Safari swallows rAF errors so we also handle startup errors
 window.onerror = function(msg, src, line) {
   try {
     ctx.setTransform(1,0,0,1,0,0);
     ctx.fillStyle='#c0392b'; ctx.fillRect(0,0,C.width,C.height);
     ctx.fillStyle='#fff'; ctx.font='28px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('שגיאה: '+msg.substring(0,40), C.width/2, C.height/2);
+    ctx.fillText('שגיאה: '+String(msg).substring(0,40), C.width/2, C.height/2);
     ctx.fillText('שורה '+line, C.width/2, C.height/2+40);
-  } catch(e){}
+  } catch(e2){}
   return true;
 };
 
