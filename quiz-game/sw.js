@@ -3,7 +3,7 @@
  * so every URL here is RELATIVE to the SW's scope. No leading slashes. */
 
 // Bump this version whenever the precached assets change.
-const CACHE = 'aluf-hadaat-v1';
+const CACHE = 'aluf-hadaat-v2';
 
 // App-shell assets to precache. All relative to the SW scope.
 const PRECACHE_URLS = [
