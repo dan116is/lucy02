@@ -7,6 +7,25 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-title" content="אלוף הידע">
+<meta name="application-name" content="אלוף הידע">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="משחק טריוויה בעברית — אלפי שאלות בכל הנושאים, מבחני סימולציה, מצב למידה ומשחק קלאסי.">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- iOS launch screens -->
+<link rel="apple-touch-startup-image" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)" href="icons/splash-1290x2796.png">
+<link rel="apple-touch-startup-image" media="(device-width:393px) and (device-height:852px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)" href="icons/splash-1179x2556.png">
+<link rel="apple-touch-startup-image" media="(device-width:428px) and (device-height:926px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)" href="icons/splash-1284x2778.png">
+<link rel="apple-touch-startup-image" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)" href="icons/splash-1170x2532.png">
+<link rel="apple-touch-startup-image" media="(device-width:375px) and (device-height:812px) and (-webkit-device-pixel-ratio:3) and (orientation:portrait)" href="icons/splash-1125x2436.png">
+<link rel="apple-touch-startup-image" media="(device-width:414px) and (device-height:896px) and (-webkit-device-pixel-ratio:2) and (orientation:portrait)" href="icons/splash-828x1792.png">
+<link rel="apple-touch-startup-image" media="(device-width:375px) and (device-height:667px) and (-webkit-device-pixel-ratio:2) and (orientation:portrait)" href="icons/splash-750x1334.png">
 <title>אלוף הידע 🎖️</title>
 <style>
 :root{
@@ -22,7 +41,7 @@ body{
   color:var(--txt); overflow:hidden; user-select:none; -webkit-user-select:none;
 }
 #app{height:100dvh;height:100vh;display:flex;flex-direction:column;max-width:560px;margin:0 auto;position:relative;}
-.screen{flex:1;display:none;flex-direction:column;padding:18px 18px calc(18px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.screen{flex:1;display:none;flex-direction:column;padding:calc(14px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .screen.on{display:flex;animation:fade .35s ease;}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
@@ -556,6 +575,40 @@ body{
   /* ---------------- אתחול ---------------- */
   buildChips();
   refreshHome();
+})();
+</script>
+
+<!-- רישום Service Worker (offline + התקנה) -->
+<script>
+'use strict';
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+
+/* רמז "הוסף למסך הבית" — רק ב-Safari לאייפון, וכל עוד לא הותקן */
+(function () {
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var standalone = window.navigator.standalone === true ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (!isIOS || standalone) return;
+  if (localStorage.getItem('a2hs_dismissed') === '1') return;
+
+  var bar = document.createElement('div');
+  bar.dir = 'rtl';
+  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));' +
+    'background:linear-gradient(135deg,#1c2f50,#15233e);color:#eaf1ff;border:1px solid rgba(255,255,255,.12);' +
+    'border-radius:16px;padding:12px 14px;font:600 14px/1.4 -apple-system,"Heebo",Arial;z-index:100;' +
+    'box-shadow:0 12px 32px rgba(0,0,0,.5);display:flex;align-items:center;gap:10px;';
+  bar.innerHTML = '<span style="font-size:22px">📲</span>' +
+    '<span style="flex:1">התקן את <b>אלוף הידע</b> למסך הבית: הקש <b>שיתוף</b> ↑ ואז <b>הוסף למסך הבית</b>.</span>' +
+    '<span id="a2hsX" style="font-size:20px;opacity:.7;cursor:pointer;padding:0 4px">✕</span>';
+  document.body.appendChild(bar);
+  document.getElementById('a2hsX').onclick = function () {
+    localStorage.setItem('a2hs_dismissed', '1');
+    bar.remove();
+  };
 })();
 </script>
 </body>
