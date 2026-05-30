@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>הדף לא נמצא · 404</title>
+<style>
+html,body{margin:0;height:100%}
+body{font-family:-apple-system,"Segoe UI","Heebo",Arial,sans-serif;
+  background:radial-gradient(900px 600px at 80% -10%,#1a2c4f,#0b1220 60%),#0b1220;color:#eaf1ff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:24px;text-align:center}
+.big{font-size:64px;margin:0}
+h1{margin:0;font-size:24px}
+p{margin:0;color:#9fb3d4}
+a{margin-top:10px;padding:14px 22px;border-radius:14px;text-decoration:none;font-weight:800;color:#fff;
+  background:linear-gradient(90deg,#3ea6ff,#7c5cff)}
+</style>
+<script>
+// מפנה חזרה לעמוד הבית של האתר (עובד גם ב-github.io וגם בדומיין מותאם)
+(function () {
+  var seg = location.pathname.split('/').filter(Boolean);
+  var base = (location.hostname.indexOf('github.io') > -1 && seg.length) ? '/' + seg[0] + '/' : '/';
+  // ממתינים רגע כדי שגם מי שיש לו JS כבוי יראה את הקישור
+  setTimeout(function () { location.replace(base); }, 1200);
+  document.addEventListener('DOMContentLoaded', function () {
+    var a = document.getElementById('home'); if (a) a.setAttribute('href', base);
+  });
+})();
+</script>
+</head>
+<body>
+  <div class="big">🧭</div>
+  <h1>אופס, הדף לא נמצא</h1>
+  <p>נראה שהגעת לכתובת שלא קיימת. מעבירים אותך לעמוד הבית…</p>
+  <a id="home" href="/">חזרה למשחקים 🎮</a>
+</body>
+</html>
